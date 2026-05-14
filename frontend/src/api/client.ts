@@ -29,6 +29,23 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     body = JSON.stringify(jsonBody);
   }
 
+  // Inject Firebase ID Token if available
+  try {
+    const { auth } = await import("@/config/firebase");
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      // Fallback for local testing if auth is mocked
+      const match = document.cookie.match(new RegExp('(^| )mock_token=([^;]+)'));
+      if (match) {
+        headers.set("Authorization", `Bearer ${match[2]}`);
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to attach Firebase token", e);
+  }
+
   const res = await fetch(url, { ...rest, headers, body });
 
   const contentType = res.headers.get("content-type") ?? "";

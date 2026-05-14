@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export default function ProfilePage() {
-  const { role, logout } = useAuth();
+  const { role, logout, name, email } = useAuth();
   const router = useRouter();
 
   if (role !== "customer") {
@@ -17,6 +17,10 @@ export default function ProfilePage() {
     logout();
     router.push("/");
   };
+
+  const displayName = name || "Customer";
+  const displayEmail = email || "customer@example.com";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 max-w-2xl mx-auto pb-20">
@@ -30,11 +34,11 @@ export default function ProfilePage() {
       <main className="p-4 sm:p-6 space-y-6">
         <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4">
           <div className="h-16 w-16 bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center font-bold text-2xl">
-            JD
+            {initial}
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">John Doe</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">john.doe@example.com</p>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-xs">{displayName}</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[200px] sm:max-w-xs">{displayEmail}</p>
             <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">
               Customer
             </span>

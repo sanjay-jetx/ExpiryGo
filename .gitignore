@@ -1,8 +1,12 @@
+backend/serviceAccountKey.json
+backend/write_key.py
+freshsave.db
+pytest_freshsave.db
+.env
+.env.local
 node_modules/
 .next/
 backend/venv/
 backend/__pycache__/
 backend/*.pyc
-backend/.env
-.env
 .DS_Store

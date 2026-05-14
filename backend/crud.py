@@ -33,6 +33,15 @@ def create_shop(db: Session, shop: schemas.ShopCreate, owner_id: int):
     db.refresh(db_shop)
     return db_shop
 
+def update_shop(db: Session, shop_id: int, shop_update: schemas.ShopCreate):
+    db_shop = get_shop(db, shop_id)
+    if db_shop:
+        for key, value in shop_update.model_dump().items():
+            setattr(db_shop, key, value)
+        db.commit()
+        db.refresh(db_shop)
+    return db_shop
+
 def _utc_now_naive() -> datetime:
     """Match naive UTC datetimes stored on Product.expiry_date."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -42,7 +51,7 @@ def get_products(db: Session, skip: int = 0, limit: int = 100, *, hide_expired: 
     q = (
         db.query(models.Product)
         .options(joinedload(models.Product.shop))
-        .filter(models.Product.is_active == True)
+        .filter(models.Product.is_active.is_(True))
     )
     if hide_expired:
         q = q.filter(models.Product.expiry_date > _utc_now_naive())

@@ -8,9 +8,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, name, email, role, isLoading } = useAuth();
 
   const navigation = [
     { name: 'Dashboard', href: '/shop', icon: LayoutDashboard },
@@ -19,7 +20,29 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
     { name: 'Settings', href: '/shop/settings', icon: Settings },
   ];
 
+  // Access Control
+  useEffect(() => {
+    if (!isLoading && role !== "shop_owner") {
+      router.replace(role ? "/" : "/auth");
+    }
+  }, [isLoading, role, router]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Loader2 className="animate-spin text-emerald-500" size={48} />
+      </div>
+    );
+  }
+
+  if (role !== "shop_owner") return null;
+
   const closeSidebar = () => setIsSidebarOpen(false);
+
+  // Fallbacks if not fully loaded or mocked
+  const displayName = name || "Shop Owner";
+  const displayEmail = email || "owner@shop.com";
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">
@@ -69,8 +92,8 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
           <button 
-            onClick={() => {
-              logout();
+            onClick={async () => {
+              await logout();
               router.push("/auth");
             }}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-gray-600 hover:bg-gray-50 w-full dark:text-gray-300 dark:hover:bg-gray-700/50 transition-all text-left"
@@ -97,8 +120,46 @@ export default function ShopLayout({ children }: { children: React.ReactNode }) 
               <Bell size={20} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-gray-800"></span>
             </button>
-            <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm border border-emerald-200 dark:border-emerald-800">
-              S
+            <div className="relative">
+              <button 
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm border border-emerald-200 dark:border-emerald-800 cursor-pointer hover:bg-emerald-200 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+              >
+                {initial}
+              </button>
+              
+              {isProfileOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)}></div>
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 z-50 overflow-hidden transform opacity-100 scale-100 transition-all origin-top-right">
+                    <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                      <p className="text-sm text-gray-900 dark:text-white font-medium truncate">{displayName}</p>
+                      <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
+                    </div>
+                    <div className="py-1">
+                      <Link 
+                        href="/shop/settings" 
+                        onClick={() => setIsProfileOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        <Settings size={16} />
+                        Settings
+                      </Link>
+                      <button 
+                        onClick={async () => {
+                          setIsProfileOpen(false);
+                          await logout();
+                          router.push("/auth");
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 w-full text-left"
+                      >
+                        <LogOut size={16} />
+                        Sign Out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>

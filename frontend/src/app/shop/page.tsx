@@ -1,12 +1,39 @@
 "use client";
 
-import { DollarSign, Package, AlertTriangle, TrendingUp } from "lucide-react";
+import { DollarSign, Package, AlertTriangle, TrendingUp, Store, MapPin } from "lucide-react";
 import { useProducts } from "@/hooks/useProducts";
-import { useMemo } from "react";
-import { formatExpiry } from "@/lib/products/formatters";
+import { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { formatExpiryDisplay } from "@/lib/products/formatters";
+import { getShop } from "@/services/shops";
+
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ShopDashboardOverview() {
   const { products } = useProducts({ limit: 100 });
+  const [shopDetails, setShopDetails] = useState<any>(null);
+  const { shopId, role, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isAuthLoading && role === "shop_owner" && !shopId) {
+      router.replace("/shop/setup");
+    }
+  }, [isAuthLoading, role, shopId, router]);
+
+  useEffect(() => {
+    if (!shopId) return;
+    
+    getShop(shopId)
+      .then(data => setShopDetails(data))
+      .catch((e) => {
+        console.warn("Could not fetch shop details from backend, using fallback.", e);
+        setShopDetails({
+          name: "My FreshSave Shop",
+          address: "Store Location"
+       });
+      });
+  }, [shopId]);
 
   const stats = useMemo(() => {
     const activeDeals = products.length;
@@ -15,7 +42,6 @@ export default function ShopDashboardOverview() {
 
     return [
       { name: "Active Deals", value: activeDeals.toString(), icon: Package, change: "+0", changeType: "positive" },
-      { name: "Revenue Saved", value: `₹${revenueSaved.toFixed(2)}`, icon: DollarSign, change: "+0%", changeType: "positive" },
       { name: "Expiring Soon", value: expiringSoon.toString(), icon: AlertTriangle, change: "-0", changeType: "positive" },
       { name: "Total Views", value: "0", icon: TrendingUp, change: "0%", changeType: "positive" },
     ];
@@ -23,9 +49,30 @@ export default function ShopDashboardOverview() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Overview</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Welcome back! Here&apos;s what&apos;s happening with your deals today.</p>
+      
+      {/* Shop Info Header */}
+      <div className="mb-8 bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 bg-emerald-100 dark:bg-emerald-900/50 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+            <Store size={32} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {shopDetails ? shopDetails.name : "Loading Shop..."}
+            </h1>
+            <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <MapPin size={14} />
+              {shopDetails ? shopDetails.address : "Loading location..."}
+            </div>
+          </div>
+        </div>
+        <div className="bg-gray-50 dark:bg-gray-900 px-4 py-2 rounded-xl text-sm border border-gray-100 dark:border-gray-700">
+          <p className="text-gray-500 dark:text-gray-400 mb-0.5 text-xs font-semibold uppercase tracking-wider">Status</p>
+          <div className="flex items-center gap-2 font-medium text-emerald-600 dark:text-emerald-400">
+            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse"></div>
+            Accepting Orders
+          </div>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -56,7 +103,7 @@ export default function ShopDashboardOverview() {
         </div>
         <div className="divide-y divide-gray-100 dark:divide-gray-700">
           {products.slice(0, 3).map((product) => {
-            const expiry = formatExpiry(product.expiry_date);
+            const expiry = formatExpiryDisplay(product.expiry_date);
             return (
               <div key={product.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                 <div className="flex items-center gap-4">

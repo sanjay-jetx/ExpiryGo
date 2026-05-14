@@ -42,6 +42,6 @@ class Product(Base):
     expiry_image_url = Column(String)
     voice_note_url = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))
 
     shop = relationship("Shop", back_populates="products")

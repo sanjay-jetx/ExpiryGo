@@ -25,3 +25,5 @@ export type ApiProduct = {
   created_at: string;
   shop: ApiShopSummary | null;
 };
+
+export type ApiProductCreate = Omit<ApiProduct, "id" | "created_at" | "shop" | "is_active" | "shop_id">;

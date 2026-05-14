@@ -13,7 +13,15 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("deals");
   const [playingId, setPlayingId] = useState<number | null>(null);
   const { products, status, errorMessage, refetch } = useProducts({ limit: 100 });
-  const { role } = useAuth();
+  const { role, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
+        <Loader2 className="animate-spin text-emerald-500" size={48} />
+      </div>
+    );
+  }
 
   const togglePlay = (id: number, e: React.MouseEvent) => {
     e.preventDefault();

@@ -21,3 +21,16 @@ export async function getProducts(params: GetProductsParams = {}): Promise<ApiPr
   const query = search.size > 0 ? `?${search.toString()}` : "";
   return apiRequest<ApiProduct[]>(`/products/${query}`);
 }
+
+/**
+ * Creates a new product for a shop.
+ */
+export async function createProduct(product: import("@/types/product").ApiProductCreate): Promise<ApiProduct> {
+  return apiRequest<ApiProduct>(`/products/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(product),
+  });
+}

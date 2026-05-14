@@ -49,7 +49,7 @@ class ShopBase(BaseModel):
     address: str
     latitude: float
     longitude: float
-    description: str
+    description: Optional[str] = None
 
 class ShopCreate(ShopBase):
     pass
