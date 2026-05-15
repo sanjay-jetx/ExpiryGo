@@ -1,47 +1,55 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Float, DateTime, Text
-from sqlalchemy.orm import relationship
-from database import Base
-import datetime
+"""
+Pydantic models for MongoDB documents — no Firebase, no SQLAlchemy.
+"""
 
-class User(Base):
-    __tablename__ = "users"
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+from bson import ObjectId
 
-    id = Column(Integer, primary_key=True, index=True)
-    firebase_uid = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-    name = Column(String)
-    is_shop_owner = Column(Boolean, default=False)
 
-    shop = relationship("Shop", back_populates="owner", uselist=False)
+# Helper for MongoDB ObjectId
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
 
-class Shop(Base):
-    __tablename__ = "shops"
+    @classmethod
+    def validate(cls, v):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid objectid")
+        return ObjectId(v)
 
-    id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    name = Column(String, index=True)
-    address = Column(String)
-    latitude = Column(Float)
-    longitude = Column(Float)
-    description = Column(Text)
-    
-    owner = relationship("User", back_populates="shop")
-    products = relationship("Product", back_populates="shop")
+    @classmethod
+    def __get_pydantic_json_schema__(cls, field_schema):
+        field_schema.update(type="string")
 
-class Product(Base):
-    __tablename__ = "products"
 
-    id = Column(Integer, primary_key=True, index=True)
-    shop_id = Column(Integer, ForeignKey("shops.id"))
-    name = Column(String, index=True)
-    original_price = Column(Float)
-    discount_price = Column(Float)
-    quantity = Column(Integer)
-    expiry_date = Column(DateTime)
-    front_image_url = Column(String)
-    expiry_image_url = Column(String)
-    voice_note_url = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))
+class UserDoc(BaseModel):
+    email: str
+    name: str
+    hashed_password: Optional[str] = None  # stored but never returned via API
+    is_shop_owner: bool = False
 
-    shop = relationship("Shop", back_populates="products")
+
+class ShopDoc(BaseModel):
+    owner_uid: str  # MongoDB user _id as string
+    name: str
+    address: str
+    latitude: float
+    longitude: float
+    description: Optional[str] = None
+
+
+class ProductDoc(BaseModel):
+    shop_id: str  # Reference to Shop _id
+    name: str
+    original_price: float
+    discount_price: float
+    quantity: int
+    expiry_date: datetime
+    front_image_url: str
+    expiry_image_url: str
+    voice_note_url: Optional[str] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)

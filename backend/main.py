@@ -1,32 +1,21 @@
-from contextlib import asynccontextmanager
-from typing import List
+"""
+FreshSave API — MongoDB + JWT auth (no Firebase).
+"""
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from typing import Optional
+from datetime import datetime
 
-import crud, models, schemas
-from database import engine, get_db, get_settings, verify_connection
+import schemas
+from database import get_db, client as db_client
+from auth import get_current_user_uid, get_password_hash, verify_password, create_access_token
+from bson import ObjectId
 
+app = FastAPI(title="FreshSave MongoDB API")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    settings = get_settings()
-    if settings.validate_on_startup:
-        verify_connection()
-    models.Base.metadata.create_all(bind=engine)
-    yield
-    engine.dispose()
-
-
-app = FastAPI(title="FreshSave API", lifespan=lifespan)
-
-# Setup CORS
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    # Add your production frontend URL here when deploying
-]
+# Setup CORS — allow all origins during development to avoid CORS issues
+ALLOWED_ORIGINS = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,73 +25,213 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to FreshSave API"}
+# =========================
+# STARTUP & HEALTH
+# =========================
 
-from auth import verify_firebase_token, get_current_user, get_current_shop_owner
+@app.on_event("startup")
+async def startup_db_check():
+    """Verify MongoDB is reachable when the server starts."""
+    try:
+        info = await db_client.server_info()
+        print(f"[STARTUP] MongoDB connected OK - version {info.get('version', '?')}")
+    except Exception as e:
+        print(f"[STARTUP] WARNING: MongoDB not reachable: {e}")
+        print(f"[STARTUP] The server will start, but DB operations will fail until MongoDB is available.")
 
-@app.post("/users/", response_model=schemas.User)
-def create_user(user_data: schemas.UserBase, db: Session = Depends(get_db), decoded_token: dict = Depends(verify_firebase_token)):
-    firebase_uid = decoded_token.get("uid")
-    db_user = crud.get_user_by_firebase_uid(db, firebase_uid=firebase_uid)
-    if db_user:
-        raise HTTPException(status_code=400, detail="User already registered")
+@app.get("/health")
+async def health_check():
+    """Quick health check endpoint."""
+    try:
+        db = await get_db()
+        await db.command("ping")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "database": str(e)}
+
+# =========================
+# AUTH: REGISTER & LOGIN
+# =========================
+
+@app.post("/auth/register", response_model=schemas.AuthResponse)
+async def register(req: schemas.RegisterRequest, db=Depends(get_db)):
+    """Register a new user with email + password. Returns JWT."""
+    # 1. Validation: Check if email already exists
+    existing = await db.users.find_one({"email": req.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+        
+    # 2. Hash Password
+    hashed_pwd = get_password_hash(req.password)
     
-    # Create the user using the UID from the verified token
-    user_create = schemas.UserCreate(
-        firebase_uid=firebase_uid,
-        **user_data.model_dump()
-    )
-    return crud.create_user(db=db, user=user_create)
+    # 3. Create user doc
+    user_doc = {
+        "email": req.email,
+        "name": req.name,
+        "hashed_password": hashed_pwd,
+        "is_shop_owner": req.is_shop_owner,
+        "created_at": datetime.utcnow(),
+    }
+    result = await db.users.insert_one(user_doc)
+    user_id = str(result.inserted_id)
 
-@app.get("/users/me", response_model=schemas.User)
-def read_current_user(current_user: models.User = Depends(get_current_user)):
-    return current_user
+    # 4. Create JWT
+    token = create_access_token({"sub": user_id, "email": req.email})
 
-@app.get("/users/{firebase_uid}", response_model=schemas.User)
-def read_user(firebase_uid: str, db: Session = Depends(get_db)):
-    db_user = crud.get_user_by_firebase_uid(db, firebase_uid=firebase_uid)
-    if db_user is None:
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_id,
+            "email": req.email,
+            "name": req.name,
+            "is_shop_owner": req.is_shop_owner,
+        },
+    }
+@app.post("/auth/login", response_model=schemas.AuthResponse)
+async def login(req: schemas.LoginRequest, db=Depends(get_db)):
+    """Login with email + password. Returns JWT."""
+    user = await db.users.find_one({"email": req.email})
+    if not user or not verify_password(req.password, user.get("hashed_password", "")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    user_id = str(user["_id"])
+    token = create_access_token({"sub": user_id, "email": user["email"]})
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_id,
+            "email": user["email"],
+            "name": user["name"],
+            "is_shop_owner": user.get("is_shop_owner", False),
+        },
+    }
+
+
+# =========================
+# USERS
+# =========================
+
+@app.get("/users/me")
+async def read_current_user(db=Depends(get_db), uid: str = Depends(get_current_user_uid)):
+    """Get the currently authenticated user's profile."""
+    user = await db.users.find_one({"_id": ObjectId(uid)})
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return db_user
 
-@app.post("/shops/", response_model=schemas.Shop)
-def create_shop(shop: schemas.ShopCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_shop_owner)):
-    existing_shop = crud.get_shop_by_owner(db, owner_id=current_user.id)
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "is_shop_owner": user.get("is_shop_owner", False),
+    }
+
+
+# =========================
+# SHOPS
+# =========================
+
+@app.post("/shops/")
+async def create_shop(shop: schemas.ShopBase, db=Depends(get_db), uid: str = Depends(get_current_user_uid)):
+    # Check if user is shop owner
+    user = await db.users.find_one({"_id": ObjectId(uid)})
+    if not user or not user.get("is_shop_owner"):
+        raise HTTPException(status_code=403, detail="Not authorized as shop owner")
+
+    existing_shop = await db.shops.find_one({"owner_uid": uid})
     if existing_shop:
         raise HTTPException(status_code=400, detail="User already has a shop")
-    return crud.create_shop(db=db, shop=shop, owner_id=current_user.id)
 
-@app.get("/shops/{shop_id}", response_model=schemas.Shop)
-def read_shop(shop_id: int, db: Session = Depends(get_db)):
-    db_shop = crud.get_shop(db, shop_id=shop_id)
-    if db_shop is None:
+    new_shop = shop.model_dump()
+    new_shop["owner_uid"] = uid
+    result = await db.shops.insert_one(new_shop)
+    new_shop["id"] = str(result.inserted_id)
+    return new_shop
+
+
+@app.get("/shops/me")
+async def read_my_shop(db=Depends(get_db), uid: str = Depends(get_current_user_uid)):
+    """Get the shop owned by the currently authenticated user."""
+    shop = await db.shops.find_one({"owner_uid": uid})
+    if not shop:
+        raise HTTPException(status_code=404, detail="No shop found for this user")
+    shop["id"] = str(shop["_id"])
+    return shop
+
+
+@app.get("/shops/{shop_id}")
+async def read_shop(shop_id: str, db=Depends(get_db)):
+    shop = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    if not shop:
         raise HTTPException(status_code=404, detail="Shop not found")
-    return db_shop
+    shop["id"] = str(shop["_id"])
+    return shop
 
-@app.put("/shops/{shop_id}", response_model=schemas.Shop)
-def update_shop(shop_id: int, shop: schemas.ShopCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_shop_owner)):
-    db_shop = crud.get_shop(db, shop_id=shop_id)
-    if db_shop is None:
-        raise HTTPException(status_code=404, detail="Shop not found")
-    if db_shop.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to edit this shop")
-    return crud.update_shop(db=db, shop_id=shop_id, shop_update=shop)
 
-@app.get("/products/", response_model=List[schemas.ProductWithShop])
-def read_products(
-    skip: int = 0,
-    limit: int = 100,
+# =========================
+# PRODUCTS
+# =========================
+
+@app.get("/products/")
+async def read_products(
+    shop_id: Optional[str] = None,
     hide_expired: bool = True,
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ):
-    products = crud.get_products(db, skip=skip, limit=limit, hide_expired=hide_expired)
+    query = {}
+    if shop_id:
+        query["shop_id"] = shop_id
+    if hide_expired:
+        query["expiry_date"] = {"$gt": datetime.utcnow()}
+
+    cursor = db.products.find(query).sort("expiry_date", 1)
+    products = await cursor.to_list(length=100)
+
+    for p in products:
+        p["id"] = str(p["_id"])
+        # Fetch shop details for each product (simple join)
+        try:
+            shop = await db.shops.find_one({"_id": ObjectId(p["shop_id"])})
+            if shop:
+                p["shop"] = {
+                    "id": str(shop["_id"]),
+                    "name": shop["name"],
+                    "address": shop["address"],
+                }
+        except Exception:
+            pass
+
     return products
 
-@app.post("/products/", response_model=schemas.Product)
-def create_product(product: schemas.ProductCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_shop_owner)):
-    db_shop = crud.get_shop_by_owner(db, owner_id=current_user.id)
-    if not db_shop:
-        raise HTTPException(status_code=400, detail="Shop owner has no shop created yet")
-    return crud.create_product(db=db, product=product, shop_id=db_shop.id)
+
+@app.post("/products/")
+async def create_product(product: schemas.ProductCreate, db=Depends(get_db), uid: str = Depends(get_current_user_uid)):
+    shop = await db.shops.find_one({"owner_uid": uid})
+    if not shop:
+        raise HTTPException(status_code=400, detail="No shop found for this owner")
+
+    new_product = product.model_dump()
+    new_product["shop_id"] = str(shop["_id"])
+    new_product["created_at"] = datetime.utcnow()
+
+    result = await db.products.insert_one(new_product)
+    new_product["id"] = str(result.inserted_id)
+    return new_product
+
+
+@app.delete("/products/{product_id}")
+async def delete_product(product_id: str, db=Depends(get_db), uid: str = Depends(get_current_user_uid)):
+    shop = await db.shops.find_one({"owner_uid": uid})
+    if not shop:
+        raise HTTPException(status_code=400, detail="Not a shop owner")
+
+    result = await db.products.delete_one({
+        "_id": ObjectId(product_id),
+        "shop_id": str(shop["_id"]),
+    })
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Product not found or not owned by you")
+    return {"message": "Product deleted"}

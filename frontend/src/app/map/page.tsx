@@ -55,10 +55,9 @@ export default function MapDiscovery() {
       {/* 100% FREE Map Component (Leaflet + OpenStreetMap) */}
       <div className="absolute inset-0 z-0">
         <MapComponent 
-          mockShops={mockShops}
-          selectedShop={selectedShop}
-          setSelectedShop={setSelectedShop}
-          defaultCenter={defaultCenter}
+          lat={defaultCenter[0]}
+          lng={defaultCenter[1]}
+          zoom={13}
         />
       </div>
 

@@ -1,227 +1,135 @@
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
-
-import { auth } from "@/config/firebase";
-
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  User as FirebaseUser,
-} from "firebase/auth";
-
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest } from "@/api/client";
-
-// =========================
-// TYPES
-// =========================
 
 export type Role = "customer" | "shop_owner" | null;
 
-interface AuthContextType {
-  user: FirebaseUser | null;
-  role: Role;
-  name: string | null;
-  email: string | null;
-  shopId: number | null;
-  login: (email: string, pass: string) => Promise<void>;
-  signup: (
-    email: string,
-    pass: string,
-    name: string,
-    role: Role
-  ) => Promise<void>;
-  logout: () => Promise<void>;
-  isLoading: boolean;
-  refreshUser: () => Promise<void>;
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  is_shop_owner: boolean;
+  shop_id?: string;
 }
 
-// =========================
-// CONTEXT
-// =========================
+interface AuthContextType {
+  user: AuthUser | null;
+  role: Role;
+  shopId: string | null;
+  isLoading: boolean;
+  login: (email: string, pass: string) => Promise<void>;
+  signup: (email: string, pass: string, name: string, role: Role) => Promise<void>;
+  logout: () => void;
+}
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   role: null,
-  name: null,
-  email: null,
   shopId: null,
+  isLoading: true,
   login: async () => {},
   signup: async () => {},
-  logout: async () => {},
-  isLoading: true,
-  refreshUser: async () => {},
+  logout: () => {},
 });
 
-// =========================
-// PROVIDER
-// =========================
+const TOKEN_KEY = "access_token";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [role, setRole] = useState<Role>(null);
-  const [name, setName] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const [shopId, setShopId] = useState<number | null>(null);
+  const [shopId, setShopId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
-  // Helper to fetch backend user data
-  const refreshUser = useCallback(async () => {
-    if (!auth.currentUser) {
-      setRole(null);
-      setName(null);
-      setEmail(null);
-      setShopId(null);
-      return;
-    }
-
+  // Fetch the shop owned by this user (if any)
+  const loadShopId = useCallback(async () => {
     try {
-      const dbUser = await apiRequest<any>("/users/me");
-      if (dbUser) {
-        setRole(dbUser.is_shop_owner ? "shop_owner" : "customer");
-        setName(dbUser.name);
-        setEmail(dbUser.email);
-        if (dbUser.shop) {
-          setShopId(dbUser.shop.id);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to refresh user from backend:", error);
-      // Don't clear role here if it was a temporary network error
+      const shop = await apiRequest<{ id: string }>("/shops/me");
+      setShopId(shop.id);
+    } catch {
+      setShopId(null);
     }
   }, []);
 
-  // =========================
-  // AUTH STATE LISTENER
-  // =========================
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setIsLoading(true);
-      try {
-        if (firebaseUser) {
-          setUser(firebaseUser);
-          const token = await firebaseUser.getIdToken();
-          document.cookie = `mock_token=${token}; path=/; max-age=3600`;
-          await refreshUser();
-        } else {
-          setUser(null);
-          setRole(null);
-          setName(null);
-          setEmail(null);
-          setShopId(null);
-          document.cookie = "mock_token=; path=/; max-age=0";
-        }
-      } catch (error) {
-        console.error("Auth state change error:", error);
-      } finally {
-        setIsLoading(false);
+  // Load user from backend using token
+  const loadUser = useCallback(async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
+      if (!token) {
+        setUser(null);
+        setRole(null);
+        return;
       }
-    });
-
-    return () => unsubscribe();
-  }, [refreshUser]);
-
-  // =========================
-  // LOGIN
-  // =========================
-
-  const login = async (emailStr: string, passStr: string) => {
-    setIsLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, emailStr, passStr);
-      // onAuthStateChanged will handle state update and set isLoading(false)
+      
+      const dbUser = await apiRequest<AuthUser>("/users/me");
+      setUser(dbUser);
+      setRole(dbUser.is_shop_owner ? "shop_owner" : "customer");
+      if (dbUser.is_shop_owner) await loadShopId();
     } catch (error) {
-      setIsLoading(false);
-      throw error;
-    }
-  };
-
-  // =========================
-  // SIGNUP
-  // =========================
-
-  const signup = async (
-    emailStr: string,
-    passStr: string,
-    userName: string,
-    userRole: Role
-  ) => {
-    setIsLoading(true);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        emailStr,
-        passStr
-      );
-      const firebaseUser = userCredential.user;
-
-      const token = await firebaseUser.getIdToken();
-      document.cookie = `mock_token=${token}; path=/; max-age=3600`;
-
-      // create DB user
-      await apiRequest("/users/", {
-        method: "POST",
-        json: {
-          email: emailStr,
-          name: userName,
-          is_shop_owner: userRole === "shop_owner",
-        },
-      });
-
-      // Now that backend user is created, refresh state
-      await refreshUser();
-    } catch (error) {
-      setIsLoading(false);
-      throw error;
-    }
-  };
-
-  // =========================
-  // LOGOUT
-  // =========================
-
-  const logout = async () => {
-    setIsLoading(true);
-    try {
-      await firebaseSignOut(auth);
-    } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Failed to authenticate session:", error);
+      if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+      setUser(null);
+      setRole(null);
+      setShopId(null);
     } finally {
       setIsLoading(false);
     }
+  }, [loadShopId]);
+
+  // Initial load
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const login = async (emailStr: string, passStr: string) => {
+    const res = await apiRequest<any>("/auth/login", {
+      method: "POST",
+      json: { email: emailStr, password: passStr },
+    });
+
+    localStorage.setItem(TOKEN_KEY, res.access_token);
+    setUser(res.user);
+    const userRole: Role = res.user.is_shop_owner ? "shop_owner" : "customer";
+    setRole(userRole);
+    if (res.user.is_shop_owner) {
+      await loadShopId();
+      router.push("/shop");
+    } else {
+      router.push("/");
+    }
+  };
+
+  const signup = async (emailStr: string, passStr: string, userName: string, userRole: Role) => {
+    const res = await apiRequest<any>("/auth/register", {
+      method: "POST",
+      json: {
+        email: emailStr,
+        password: passStr,
+        name: userName,
+        is_shop_owner: userRole === "shop_owner",
+      },
+    });
+
+    localStorage.setItem(TOKEN_KEY, res.access_token);
+    setUser(res.user);
+    setRole(res.user.is_shop_owner ? "shop_owner" : "customer");
+    // Signup redirects are handled by the auth page itself
+  };
+
+  const logout = () => {
+    if (typeof window !== "undefined") localStorage.removeItem(TOKEN_KEY);
+    setUser(null);
+    setRole(null);
+    router.push("/auth");
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        role,
-        name,
-        email,
-        shopId,
-        login,
-        signup,
-        logout,
-        isLoading,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={{ user, role, shopId, isLoading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );
 }
-
-// =========================
-// HOOK
-// =========================
 
 export const useAuth = () => useContext(AuthContext);

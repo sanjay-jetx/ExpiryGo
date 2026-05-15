@@ -1,6 +1,37 @@
+"""
+Pydantic schemas for request/response validation — no Firebase references.
+"""
+
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
+
+
+# =========================
+# AUTH
+# =========================
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    is_shop_owner: bool = False
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: dict
+
+
+# =========================
+# PRODUCTS
+# =========================
 
 class ProductBase(BaseModel):
     name: str
@@ -13,21 +44,21 @@ class ProductBase(BaseModel):
     voice_note_url: Optional[str] = None
     is_active: bool = True
 
+
 class ProductCreate(ProductBase):
     pass
 
+
 class Product(ProductBase):
-    id: int
-    shop_id: int
+    id: str
+    shop_id: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ShopSummary(BaseModel):
-    """Subset of shop fields for product cards and listings."""
-
-    id: int
+    id: str
     name: str
     address: str
     latitude: float
@@ -37,12 +68,13 @@ class ShopSummary(BaseModel):
 
 
 class ProductWithShop(Product):
-    """Product as returned from list endpoints, including shop context."""
-
-    shop: ShopSummary | None = None
-
+    shop: Optional[ShopSummary] = None
     model_config = ConfigDict(from_attributes=True)
 
+
+# =========================
+# SHOPS
+# =========================
 
 class ShopBase(BaseModel):
     name: str
@@ -51,27 +83,30 @@ class ShopBase(BaseModel):
     longitude: float
     description: Optional[str] = None
 
+
 class ShopCreate(ShopBase):
     pass
 
+
 class Shop(ShopBase):
-    id: int
-    owner_id: int
+    id: str
+    owner_uid: str
     products: List[Product] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# =========================
+# USERS
+# =========================
 
 class UserBase(BaseModel):
     email: str
     name: str
     is_shop_owner: bool = False
 
-class UserCreate(UserBase):
-    firebase_uid: str
 
 class User(UserBase):
-    id: int
-    firebase_uid: str
-    shop: Optional[Shop] = None
+    id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

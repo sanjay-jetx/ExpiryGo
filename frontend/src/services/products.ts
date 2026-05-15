@@ -6,6 +6,7 @@ export type GetProductsParams = {
   limit?: number;
   /** When true (default), backend omits products past expiry_date */
   hideExpired?: boolean;
+  shopId?: number;
 };
 
 /**
@@ -15,6 +16,7 @@ export async function getProducts(params: GetProductsParams = {}): Promise<ApiPr
   const search = new URLSearchParams();
   if (params.skip != null) search.set("skip", String(params.skip));
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.shopId != null) search.set("shop_id", String(params.shopId));
   if (params.hideExpired === false) {
     search.set("hide_expired", "false");
   }
@@ -32,5 +34,14 @@ export async function createProduct(product: import("@/types/product").ApiProduc
       "Content-Type": "application/json",
     },
     body: JSON.stringify(product),
+  });
+}
+
+/**
+ * Deletes a product.
+ */
+export async function deleteProduct(productId: number): Promise<void> {
+  await apiRequest(`/products/${productId}`, {
+    method: "DELETE",
   });
 }

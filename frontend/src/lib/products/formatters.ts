@@ -1,36 +1,27 @@
-import { differenceInHours, differenceInMinutes, isBefore, parseISO } from "date-fns";
-
-export function computeDiscountPercent(originalPrice: number, discountPrice: number): number {
-  if (originalPrice <= 0) return 0;
-  const pct = Math.round(((originalPrice - discountPrice) / originalPrice) * 100);
-  return Math.max(0, Math.min(99, pct));
-}
-
-export type ExpiryDisplay = {
-  /** e.g. "12h" or "45m" */
-  compact: string;
-  isExpired: boolean;
-};
-
-/**
- * Human-readable urgency label for badges (matches prior "Expires in Xh" style).
- */
-export function formatExpiryDisplay(isoDate: string): ExpiryDisplay {
-  const end = parseISO(isoDate);
+export function formatExpiryDisplay(dateString: string) {
+  const expiryDate = new Date(dateString);
   const now = new Date();
-  if (isBefore(end, now)) {
-    return { compact: "Expired", isExpired: true };
+  const diffMs = expiryDate.getTime() - now.getTime();
+  
+  const isExpired = diffMs <= 0;
+  
+  if (isExpired) {
+    return { isExpired: true, compact: "0h", full: "Expired" };
   }
-  const hours = differenceInHours(end, now);
-  if (hours >= 1) {
-    return { compact: `${hours}h`, isExpired: false };
+  
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  
+  let compact = "";
+  let full = "";
+  
+  if (diffDays > 0) {
+    compact = `${diffDays}d`;
+    full = `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+  } else {
+    compact = `${diffHours}h`;
+    full = `${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
   }
-  const minutes = Math.max(1, differenceInMinutes(end, now));
-  return { compact: `${minutes}m`, isExpired: false };
-}
-
-export function truncateText(text: string, maxLen: number): string {
-  const t = text.trim();
-  if (t.length <= maxLen) return t;
-  return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
+  
+  return { isExpired: false, compact, full };
 }

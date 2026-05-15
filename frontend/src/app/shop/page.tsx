@@ -37,13 +37,13 @@ export default function ShopDashboardOverview() {
 
   const stats = useMemo(() => {
     const activeDeals = products.length;
-    const revenueSaved = products.reduce((acc, p) => acc + (p.original - p.price), 0);
+    const revenueSaved = products.reduce((acc, p) => acc + (p.original_price - p.discount_price), 0);
     const expiringSoon = products.filter(p => new Date(p.expiry_date).getTime() - Date.now() < 24 * 3600 * 1000 && new Date(p.expiry_date).getTime() > Date.now()).length;
 
     return [
       { name: "Active Deals", value: activeDeals.toString(), icon: Package, change: "+0", changeType: "positive" },
       { name: "Expiring Soon", value: expiringSoon.toString(), icon: AlertTriangle, change: "-0", changeType: "positive" },
-      { name: "Total Views", value: "0", icon: TrendingUp, change: "0%", changeType: "positive" },
+      { name: "Total Savings", value: `₹${revenueSaved.toFixed(0)}`, icon: TrendingUp, change: "0%", changeType: "positive" },
     ];
   }, [products]);
 
@@ -108,7 +108,7 @@ export default function ShopDashboardOverview() {
               <div key={product.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-xl overflow-hidden">
-                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    <img src={product.front_image_url} alt={product.name} className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{product.name}</p>
@@ -118,8 +118,8 @@ export default function ShopDashboardOverview() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">₹{product.price.toFixed(2)}</p>
-                  <p className="text-xs text-gray-400 line-through">₹{product.original.toFixed(2)}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">₹{product.discount_price.toFixed(2)}</p>
+                  <p className="text-xs text-gray-400 line-through">₹{product.original_price.toFixed(2)}</p>
                 </div>
               </div>
             );

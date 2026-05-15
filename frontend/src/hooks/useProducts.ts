@@ -15,8 +15,11 @@ export type UseProductsResult = {
   refetch: () => Promise<void>;
 };
 
-export function useProducts(options?: { limit?: number }): UseProductsResult {
+export function useProducts(options?: { limit?: number; shopId?: number; hideExpired?: boolean }): UseProductsResult {
   const limit = options?.limit ?? 100;
+  const shopId = options?.shopId;
+  const hideExpired = options?.hideExpired;
+
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [status, setStatus] = useState<ProductsLoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -25,7 +28,7 @@ export function useProducts(options?: { limit?: number }): UseProductsResult {
     setStatus("loading");
     setErrorMessage(null);
     try {
-      const data = await getProducts({ limit });
+      const data = await getProducts({ limit, shopId, hideExpired });
       if (data.length === 0) {
         setProducts([]);
         setStatus("empty");
@@ -38,10 +41,9 @@ export function useProducts(options?: { limit?: number }): UseProductsResult {
       setErrorMessage(getErrorMessage(e));
       setStatus("error");
     }
-  }, [limit]);
+  }, [limit, shopId, hideExpired]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 

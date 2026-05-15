@@ -3,7 +3,7 @@
  */
 
 export type ApiShopSummary = {
-  id: number;
+  id: string;
   name: string;
   address: string;
   latitude: number;
@@ -11,8 +11,8 @@ export type ApiShopSummary = {
 };
 
 export type ApiProduct = {
-  id: number;
-  shop_id: number;
+  id: string;
+  shop_id: string;
   name: string;
   original_price: number;
   discount_price: number;

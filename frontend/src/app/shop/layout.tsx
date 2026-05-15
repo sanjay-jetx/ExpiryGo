@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Package, PlusCircle, Settings, LogOut, Menu, X, Leaf, Bell } from "lucide-react";
+import { LayoutDashboard, Package, PlusCircle, Settings, LogOut, Menu, X, Leaf, Bell, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
